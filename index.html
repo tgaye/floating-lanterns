@@ -1,0 +1,266 @@
+<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Floating Lanterns</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #0a0a20;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: Arial, sans-serif;
+       
+  frameRate(60); }
+        #canvas-container {
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: center;
+            position: relative;
+        }
+        #instructions {
+            position: absolute;
+            bottom: 20px;
+            color: rgba(255, 255, 255, 0.5);
+            text-align: center;
+            width: 100%;
+            pointer-events: none;
+            transition: opacity 2s;
+        }
+    </style>
+
+<base target="_self">
+
+
+  </head><body><button id="fs-toggle">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+      <path d="M1.5 1H6v1.5H3v3H1.5V1zM10 1h4.5v4.5H13v-3h-3V1zM1.5 10.5H3v3h3V15H1.5v-4.5zM13 13.5v-3h1.5V15H10v-1.5h3z"></path>
+    </svg>
+  </button>
+    <div id="canvas-container"></div>
+    <div id="instructions">Click or touch to release lanterns</div>
+
+    <script src="https://cdn.jsdelivr.net/npm/p5@1.8.0/lib/p5.js"></script>
+    <script>
+        const sketch = (p) => {
+            let lanterns = [];
+            let stars = [];
+            let wind = 0;
+            let lastWindChange = 0;
+            let maxLanterns = 50;
+            let bgGradient;
+            let instructionFade = 255;
+            let lastInteraction = 0;
+
+            class Lantern {
+                constructor(x, y) {
+                    this.pos = p.createVector(x, y);
+                    this.vel = p.createVector(p.random(-0.2, 0.2), p.random(-1.5, -0.8));
+                    this.size = p.random(15, 30);
+                    this.flicker = p.random(0.02, 0.05);
+                    this.brightness = p.random(0.7, 1);
+                    this.hue = p.random(30, 50);
+                    this.life = 0;
+                    this.maxLife = p.random(500, 800);
+                    this.trail = [];
+                    this.maxTrail = 10;
+                }
+
+                update() {
+                    // Apply wind
+                    this.vel.x += wind * 0.01;
+                    
+                    // Random drift
+                    this.vel.x += p.random(-0.05, 0.05);
+                    this.vel.y += p.random(-0.02, 0.02);
+                    
+                    // Constrain velocity
+                    this.vel.limit(1.5);
+                    
+                    this.pos.add(this.vel);
+                    this.life++;
+                    
+                    // Flickering effect
+                    this.brightness += p.random(-this.flicker, this.flicker);
+                    this.brightness = p.constrain(this.brightness, 0.7, 1);
+                    
+                    // Add to trail
+                    this.trail.push(this.pos.copy());
+                    if (this.trail.length > this.maxTrail) {
+                        this.trail.shift();
+                    }
+                    
+                    return this.life < this.maxLife && this.pos.y > -50;
+                }
+
+                draw() {
+                    // Draw trail
+                    p.noStroke();
+                    for (let i = 0; i < this.trail.length; i++) {
+                        let alpha = p.map(i, 0, this.trail.length, 30, 150);
+                        let size = p.map(i, 0, this.trail.length, this.size * 0.3, this.size * 0.8);
+                        p.fill(this.hue, 80, 90, alpha/255);
+                        p.ellipse(this.trail[i].x, this.trail[i].y, size);
+                    }
+                    
+                    // Draw lantern
+                    p.fill(this.hue, 80, 100 * this.brightness);
+                    p.ellipse(this.pos.x, this.pos.y, this.size);
+                    
+                    // Inner glow
+                    p.fill(this.hue, 50, 100, 0.3);
+                    p.ellipse(this.pos.x, this.pos.y, this.size * 1.5);
+                }
+            }
+
+            class Star {
+                constructor() {
+                    this.x = p.random(p.width);
+                    this.y = p.random(p.height * 0.7);
+                    this.size = p.random(0.5, 2);
+                    this.brightness = p.random(0.3, 1);
+                    this.twinkleSpeed = p.random(0.01, 0.03);
+                    this.phase = p.random(p.TWO_PI);
+                }
+
+                draw() {
+                    let twinkle = this.brightness * (0.7 + 0.3 * p.sin(this.phase + p.frameCount * this.twinkleSpeed));
+                    p.fill(200, 100, 100, twinkle);
+                    p.noStroke();
+                    p.ellipse(this.x, this.y, this.size);
+                }
+            }
+
+            p.setup = () => {
+                let canvas = p.createCanvas(p.min(p.windowWidth, 1200), p.windowHeight * 0.9);
+                canvas.parent('canvas-container');
+                p.colorMode(p.HSB, 360, 100, 100, 1);
+                
+                // Create stars
+                for (let i = 0; i < 200; i++) {
+                    stars.push(new Star());
+                }
+                
+                // Create background gradient
+                bgGradient = p.drawingContext.createLinearGradient(0, 0, 0, p.height);
+                bgGradient.addColorStop(0, p.color(240, 80, 10));
+                bgGradient.addColorStop(0.5, p.color(250, 90, 15));
+                bgGradient.addColorStop(1, p.color(260, 100, 20));
+            };
+
+            p.draw = () => {
+                // Fade instructions after interaction
+                if (p.frameCount - lastInteraction > 180) {
+                    instructionFade = p.max(0, instructionFade - 1);
+                } else {
+                    instructionFade = p.min(255, instructionFade + 3);
+                }
+                p.select('#instructions').style('opacity', instructionFade/255);
+                
+                // Draw night sky gradient
+                p.drawingContext.fillStyle = bgGradient;
+                p.drawingContext.fillRect(0, 0, p.width, p.height);
+                
+                // Draw stars
+                for (let star of stars) {
+                    star.draw();
+                }
+                
+                // Update wind occasionally
+                if (p.frameCount - lastWindChange > 120) {
+                    wind = p.random(-1, 1);
+                    lastWindChange = p.frameCount;
+                }
+                
+                // Update and draw lanterns
+                for (let i = lanterns.length - 1; i >= 0; i--) {
+                    if (!lanterns[i].update()) {
+                        lanterns.splice(i, 1);
+                    } else {
+                        lanterns[i].draw();
+                    }
+                }
+                
+                // Draw ground silhouette
+                p.fill(240, 80, 20);
+                p.noStroke();
+                p.beginShape();
+                p.vertex(0, p.height);
+                for (let x = 0; x <= p.width; x += 20) {
+                    let y = p.height * 0.7 + p.noise(x * 0.01, p.frameCount * 0.01) * 100;
+                    p.vertex(x, y);
+                }
+                p.vertex(p.width, p.height);
+                p.endShape(p.CLOSE);
+            };
+
+            p.mousePressed = () => {
+                releaseLanterns(p.mouseX, p.mouseY);
+                lastInteraction = p.frameCount;
+            };
+
+            p.touchStarted = () => {
+                releaseLanterns(p.mouseX, p.mouseY);
+                lastInteraction = p.frameCount;
+                return false; // Prevent default touch behavior
+            };
+
+            function releaseLanterns(x, y) {
+                if (lanterns.length < maxLanterns) {
+                    let count = p.floor(p.random(1, 4));
+                    for (let i = 0; i < count; i++) {
+                        let offsetX = p.random(-20, 20);
+                        let offsetY = p.random(-10, 10);
+                        lanterns.push(new Lantern(x + offsetX, y + offsetY));
+                    }
+                }
+            }
+
+            p.windowResized = () => {
+                p.resizeCanvas(p.min(p.windowWidth, 1200), p.windowHeight * 0.9);
+                
+                // Recreate background gradient
+                bgGradient = p.drawingContext.createLinearGradient(0, 0, 0, p.height);
+                bgGradient.addColorStop(0, p.color(240, 80, 10));
+                bgGradient.addColorStop(0.5, p.color(250, 90, 15));
+                bgGradient.addColorStop(1, p.color(260, 100, 20));
+            };
+        };
+
+        new p5(sketch);
+    
+  // Fullscreen toggle
+  document.getElementById('fs-toggle').addEventListener('click', function() {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(err => {
+        console.log('Fullscreen request failed: ', err);
+      });
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      }
+    }
+  });
+  
+  // Hide fullscreen button after inactivity
+  const fsButton = document.getElementById('fs-toggle');
+  let timeout;
+  document.addEventListener('mousemove', function() {
+    fsButton.style.opacity = '0.3';
+    clearTimeout(timeout);
+    timeout = setTimeout(() => {
+      fsButton.style.opacity = '0';
+    }, 2000);
+  });
+  </script>
+
+              
+          
+                
+          
+              
+</body></html>
